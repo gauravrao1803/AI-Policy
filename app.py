@@ -2,131 +2,166 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.express as px
+
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
+
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
+
 import tempfile
 
-st.set_page_config(page_title="Government Intelligence Portal", layout="wide")
+# ---------------- PAGE CONFIG ----------------
 
-# ---------------- PAGE CONTROL ----------------
+st.set_page_config(
+    page_title="National Intelligence Portal",
+    layout="wide"
+)
+
+# ---------------- LOAD ALL DATASETS ----------------
+
+@st.cache_data
+def load_data():
+
+    def clean_df(path):
+        df = pd.read_csv(path)
+
+        if "Description" in df.columns:
+            df = df.drop(columns=["Description"])
+
+        return df.set_index("Year")
+
+    return {
+        "GDP": clean_df("data/gdp_Haryana.csv"),
+        "Income": clean_df("data/income_Haryana.csv"),
+        "Literacy": clean_df("data/literacy_Haryana.csv"),
+        "Employment": clean_df("data/employment_Haryana.csv")
+    }
+
+datasets = load_data()
+
+# ---------------- SESSION CONTROL ----------------
+
 if "page" not in st.session_state:
     st.session_state.page = "welcome"
 
 # ---------------- WELCOME PAGE ----------------
+
 if st.session_state.page == "welcome":
 
     st.image("images.jpg", use_container_width=True)
 
-    st.markdown("""
-    <h1 style='text-align:center;color:#0b3d91;'>
-    National Socio-Economic Intelligence Portal
-    </h1>
-    """, unsafe_allow_html=True)
+    st.title("National Socio Economic Intelligence Portal")
 
     st.markdown("""
-    This AI-powered governance platform strengthens public policy and
-    government decision-making through predictive analytics,
-    district comparison, and strategic recommendations.
+    AI Based Governance Analytics Platform
 
-    ✔ AI-Based Forecasting  
-    ✔ District Performance Analysis  
-    ✔ Growth Comparison  
-    ✔ Policy Recommendation Engine  
+    ✔ District Development Analysis  
+    ✔ Multi Indicator Prediction  
+    ✔ Policy Intelligence Reports  
     """)
 
-    if st.button("🚀 Enter Analytics Dashboard"):
+    if st.button("Enter Dashboard 🚀"):
         st.session_state.page = "dashboard"
         st.rerun()
 
     st.stop()
 
 # ---------------- DASHBOARD ----------------
-col1, col2 = st.columns([8,1])
-with col2:
-    if st.button("⬅ Home"):
-        st.session_state.page = "welcome"
-        st.rerun()
 
-st.title("📊 District Development Analytics Dashboard")
+st.title("📊 Socio Economic Intelligence Dashboard")
 
-st.markdown("---")
-
-# ---------------- SAMPLE DATA ----------------
-years = list(range(2015, 2024))
-
-base_data = {
-    "Ambala": [50, 55, 60, 65, 70, 72, 75, 80, 85],
-    "Hisar": [40, 42, 45, 48, 50, 52, 55, 58, 60],
-    "Rohtak": [45, 47, 49, 52, 54, 57, 60, 63, 65],
-    "Gurgaon": [80, 85, 90, 100, 110, 120, 130, 145, 160],
-    "Panipat": [35, 37, 40, 42, 45, 48, 50, 53, 55]
-}
-
-categories = {
-    "GDP": pd.DataFrame(base_data, index=years),
-    "Income": pd.DataFrame({k: np.array(v)*2 for k,v in base_data.items()}, index=years),
-    "Literacy": pd.DataFrame({k: np.array(v)/2 for k,v in base_data.items()}, index=years),
-    "Employment": pd.DataFrame({k: np.array(v)*1.5 for k,v in base_data.items()}, index=years),
-}
+if st.button("Home"):
+    st.session_state.page = "welcome"
+    st.rerun()
 
 # ---------------- USER SELECTION ----------------
-st.subheader("Select Analysis Parameters")
 
-category = st.selectbox("Choose Category", ["-- Select Category --"] + list(categories.keys()))
+# Require explicit user selection (no pre-selected values)
+category_options = ["-- Select Indicator --"] + list(datasets.keys())
+category = st.selectbox("Select Indicator", category_options, key="category")
 
-if category == "-- Select Category --":
-    st.warning("Please select a category.")
+if category == "-- Select Indicator --":
+    st.info("Please select an Indicator to continue.")
     st.stop()
 
-df = categories[category]
+df = datasets[category]
 
-district = st.selectbox("Choose District", ["-- Select District --"] + list(df.columns))
+district_options = ["-- Select District --"] + list(df.columns)
+district = st.selectbox("Select District", district_options, key="district")
 
 if district == "-- Select District --":
-    st.warning("Please select a district.")
+    st.info("Please select a District to continue.")
     st.stop()
 
-# ---------------- TREND ----------------
-st.subheader(f"{district} - {category} Trend Analysis")
+# ---------------- TREND ANALYSIS ----------------
 
-fig, ax = plt.subplots(figsize=(8,4))
-ax.plot(df.index, df[district], marker="o")
-ax.set_xlabel("Year")
-ax.set_ylabel(category)
-st.pyplot(fig)
+st.subheader(f"{district} - {category} Trend")
+
+# interactive trend chart (Plotly) with hover markers and units
+units_map = {
+    "GDP": "₹",
+    "Income": "₹",
+    "Literacy": "%",
+    "Employment": "%"
+}
+
+units = units_map.get(category, "units")
+
+df_trend = df.reset_index()
+df_trend = df_trend.rename(columns={df_trend.columns[0]: "Year"})
+
+fig = px.line(
+    df_trend,
+    x="Year",
+    y=district,
+    markers=True,
+    labels={district: category},
+    title=f"{district} - {category} Trend"
+)
+fig.update_traces(hovertemplate=f"%{{y:.2f}} {units}", line=dict(color="royalblue"))
+fig.update_layout(hovermode="x unified")
+
+st.plotly_chart(fig, use_container_width=True)
 
 # ---------------- RANKING ----------------
+
 st.subheader("🏆 District Ranking (Latest Year)")
 
 latest = df.iloc[-1].sort_values(ascending=False)
+
 ranking_df = latest.reset_index()
 ranking_df.columns = ["District", category]
+
 st.dataframe(ranking_df, use_container_width=True)
 
-# ---------------- COMPARISON ----------------
-st.subheader("📊 Latest Year Comparison")
+# ---------------- GROWTH ANALYSIS ----------------
 
-fig2, ax2 = plt.subplots()
-latest.plot(kind="bar", ax=ax2)
-plt.xticks(rotation=45)
-st.pyplot(fig2)
-
-# ---------------- GROWTH ----------------
-st.subheader("📈 Overall Growth (2015-2023)")
+st.subheader("📈 Growth Analysis")
 
 growth = ((df.iloc[-1] - df.iloc[0]) / df.iloc[0]) * 100
-fig3, ax3 = plt.subplots()
-growth.plot(kind="bar", ax=ax3)
-plt.xticks(rotation=45)
-st.pyplot(fig3)
+growth_df = growth.reset_index()
+growth_df.columns = ["District", "Growth"]
 
-# ---------------- AI MODEL ----------------
-st.subheader("🧠 AI Prediction Model")
+# interactive bar chart with distinct colors per bar
+fig2 = px.bar(
+    growth_df,
+    x="District",
+    y="Growth",
+    color="District",
+    color_discrete_sequence=px.colors.qualitative.Vivid,
+    labels={"Growth": "Growth (%)"}
+)
+fig2.update_traces(hovertemplate="%{y:.2f}%")
+st.plotly_chart(fig2, use_container_width=True)
+
+# ---------------- AI PREDICTION MODEL ----------------
+
+st.subheader("🧠 AI Prediction Engine")
 
 X = np.array(df.index).reshape(-1,1)
 y = df[district].values
@@ -135,7 +170,10 @@ scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X_scaled, y, test_size=0.2, random_state=42
+    X_scaled,
+    y,
+    test_size=0.2,
+    random_state=42
 )
 
 model = RandomForestRegressor()
@@ -144,63 +182,81 @@ model.fit(X_train, y_train)
 mae = mean_absolute_error(y_test, model.predict(X_test))
 r2 = r2_score(y_test, model.predict(X_test))
 
-st.write(f"Model MAE: {mae:.2f}")
-st.write(f"Model R² Score: {r2:.2f}")
+st.write(f"Model MAE : {mae:.2f}")
+st.write(f"Model R2 Score : {r2:.2f}")
+
 # ---------------- FUTURE PREDICTION ----------------
-future_year = st.number_input("Enter Future Year", value=2025)
 
-if "prediction_done" not in st.session_state:
-    st.session_state.prediction_done = False
+future_year = st.number_input("Enter Future Year", value=2026)
 
+# make the Predict button visually prominent (dark)
+st.markdown(
+    """
+    <style>
+    .dark-btn button {
+        background-color:#0b3d91;
+        color: white;
+        border-radius:6px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown('<div class="dark-btn">', unsafe_allow_html=True)
 if st.button("Predict Future Value"):
+
     future_scaled = scaler.transform([[future_year]])
     prediction = model.predict(future_scaled)[0]
 
-    st.session_state.prediction = prediction
-    st.session_state.prediction_done = True
+    units = units_map.get(category, "units")
 
-if st.session_state.prediction_done:
+    st.success(
+        f"Predicted {category} for {district} in {future_year} = {prediction:.2f} {units}"
+    )
 
-    prediction = st.session_state.prediction
+    policy_text = """
+    Development projection suggests continuous government monitoring.
 
-    st.success(f"Predicted {category} for {district} in {future_year}: {prediction:.2f}")
-
-    policy_text = f"""
-    The projected value for {district} indicates its expected development trajectory.
-    Sustained growth suggests continuation of current governance strategies.
-
-    If stagnation or decline is observed, targeted fiscal intervention,
-    infrastructure expansion, employment generation programs,
-    and sector-specific reforms should be implemented.
-
-    Limitations:
-    This model is trend-based and does not account for economic shocks,
-    demographic shifts, or policy changes.
+    Recommended Focus:
+    - Infrastructure Development  
+    - Employment Generation  
+    - Education Quality Improvement  
     """
 
     st.subheader("📜 Policy Recommendation")
     st.write(policy_text)
 
-    # -------- Generate PDF Automatically --------
+    # ---------------- PDF REPORT ----------------
+
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+
     doc = SimpleDocTemplate(temp_file.name)
+    styles = getSampleStyleSheet()
+
     elements = []
 
-    styles = getSampleStyleSheet()
-    elements.append(Paragraph("District Development AI Report", styles["Title"]))
-    elements.append(Spacer(1, 0.5 * inch))
-    elements.append(Paragraph(f"Category: {category}", styles["Normal"]))
+    elements.append(
+        Paragraph("Socio Economic Intelligence Report", styles["Title"])
+    )
+
+    elements.append(Spacer(1, inch*0.3))
+
+    elements.append(Paragraph(f"Indicator: {category}", styles["Normal"]))
     elements.append(Paragraph(f"District: {district}", styles["Normal"]))
-    elements.append(Paragraph(f"Predicted Value ({future_year}): {prediction:.2f}", styles["Normal"]))
-    elements.append(Spacer(1, 0.3 * inch))
-    elements.append(Paragraph(policy_text, styles["Normal"]))
+    elements.append(
+        Paragraph(
+            f"Prediction {future_year}: {prediction:.2f} {units}",
+            styles["Normal"]
+        )
+    )
 
     doc.build(elements)
 
     with open(temp_file.name, "rb") as f:
         st.download_button(
-            label="📄 Download Full Report as PDF",
-            data=f,
-            file_name="AI_Development_Report.pdf",
-            mime="application/pdf"
+            "Download Report PDF",
+            f,
+            file_name="Intelligence_Report.pdf"
         )
+st.markdown('</div>', unsafe_allow_html=True)
